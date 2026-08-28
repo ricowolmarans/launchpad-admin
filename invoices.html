@@ -153,7 +153,7 @@ async function downloadInvoicePdf(id) {
         ${inv.vat ? `<div><span>VAT (15%)</span><span>R ${(inv.vat/100).toFixed(2)}</span></div>` : ''}
         <div class="grand"><span>Total</span><span>R ${(inv.total/100).toFixed(2)}</span></div>
       </div>
-      <script>window.onload = () => window.print();</script>
+      <scr` + `ipt>window.onload = () => window.print();</scr` + `ipt>
     </body>
     </html>
   `);
