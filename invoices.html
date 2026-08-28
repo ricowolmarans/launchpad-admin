@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoices — Launchpad Admin</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="shell.js"></script>
+<script>
+requireAuth();
+const content = mountShell('invoices');
+
+content.innerHTML = `
+  <div class="topbar">
+    <h1>Invoices &amp; Quotes</h1>
+    <button onclick="showNewForm()">+ New</button>
+  </div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Number</th><th>Type</th><th>Total (ZAR)</th><th>Status</th><th>Issued</th></tr></thead>
+      <tbody id="inv-tbody"></tbody>
+    </table>
+  </div>
+  <div id="modal-root"></div>
+`;
+
+loadInvoices();
+
+async function loadInvoices() {
+  const invoices = await api('/invoices');
+  document.getElementById('inv-tbody').innerHTML = invoices.map(inv => `
+    <tr onclick="openInvoice('${inv.id}')">
+      <td>${inv.number}</td>
+      <td>${inv.type}</td>
+      <td>R ${(inv.total/100).toFixed(2)}</td>
+      <td><span class="status-pill">${inv.status}</span></td>
+      <td>${new Date(inv.issued_at*1000).toLocaleDateString()}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="color:var(--muted)">No invoices yet.</td></tr>';
+}
+
+let lineItems = [{ desc: '', qty: 1, unit_price: 0 }];
+
+async function showNewForm() {
+  const orders = await api('/orders');
+  lineItems = [{ desc: '', qty: 1, unit_price: 0 }];
+  renderNewForm(orders);
+}
+
+function renderNewForm(orders) {
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-backdrop" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <h2>New Quote / Invoice</h2>
+        <label>Order</label>
+        <select id="order-select">
+          ${orders.map(o => `<option value="${o.id}">${o.company_name} (${o.tracking_username})</option>`).join('')}
+        </select>
+        <label>Type</label>
+        <select id="type-select">
+          <option value="quote">Quote</option>
+          <option value="invoice">Invoice</option>
+        </select>
+        <label>Line Items (amounts in Rands)</label>
+        <div id="line-items"></div>
+        <button class="secondary" onclick="addLineItem()" style="margin-bottom:16px;">+ Add Line</button>
+        <label><input type="checkbox" id="vat-check" style="width:auto; display:inline-block; margin-right:6px;"> Apply 15% VAT</label>
+        <button onclick="submitInvoice()" style="width:100%; margin-top:12px;">Create</button>
+        <button class="secondary" onclick="document.querySelector('.modal-backdrop').remove()" style="width:100%; margin-top:8px;">Cancel</button>
+      </div>
+    </div>
+  `;
+  renderLineItems();
+}
+
+function renderLineItems() {
+  document.getElementById('line-items').innerHTML = lineItems.map((li, i) => `
+    <div style="display:flex; gap:6px; margin-bottom:8px;">
+      <input placeholder="Description" value="${li.desc}" oninput="lineItems[${i}].desc=this.value" style="margin:0; flex:2;">
+      <input type="number" placeholder="Qty" value="${li.qty}" oninput="lineItems[${i}].qty=Number(this.value)" style="margin:0; flex:1;">
+      <input type="number" placeholder="Unit R" value="${li.unit_price}" oninput="lineItems[${i}].unit_price=Number(this.value)" style="margin:0; flex:1;">
+    </div>
+  `).join('');
+}
+
+function addLineItem() {
+  lineItems.push({ desc: '', qty: 1, unit_price: 0 });
+  renderLineItems();
+}
+
+async function submitInvoice() {
+  const orderId = document.getElementById('order-select').value;
+  const type = document.getElementById('type-select').value;
+  const apply_vat = document.getElementById('vat-check').checked;
+  // convert Rand inputs to cents
+  const line_items = lineItems.map(li => ({ desc: li.desc, qty: li.qty, unit_price: Math.round(li.unit_price * 100) }));
+
+  await api(`/orders/${orderId}/invoices`, { method: 'POST', body: JSON.stringify({ type, line_items, apply_vat }) });
+  document.querySelector('.modal-backdrop').remove();
+  loadInvoices();
+}
+
+async function openInvoice(id) {
+  // simple status update modal
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-backdrop" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <h2>Update Status</h2>
+        <select id="status-update">
+          ${['draft','sent','paid','overdue','void'].map(s => `<option value="${s}">${s}</option>`).join('')}
+        </select>
+        <button onclick="setInvoiceStatus('${id}')" style="width:100%; margin-top:12px;">Save</button>
+      </div>
+    </div>
+  `;
+}
+
+async function setInvoiceStatus(id) {
+  const status = document.getElementById('status-update').value;
+  await api(`/invoices/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  document.querySelector('.modal-backdrop').remove();
+  loadInvoices();
+}
+</script>
+</body>
+</html>

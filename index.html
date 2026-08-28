@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Launchpad Admin — Login</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login-box { width: 340px; padding: 32px; }
+  .login-box h1 { font-size: 1.1rem; margin-bottom: 4px; }
+  .login-box .sub { color: var(--muted); font-size: 0.75rem; margin-bottom: 20px; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+  <div class="card login-box">
+    <h1>LAUNCHPAD<span style="color:var(--red)">.</span> ADMIN</h1>
+    <p class="sub">AUTHORIZATION REQUIRED</p>
+    <form id="login-form">
+      <label>Username</label>
+      <input type="text" id="username" required autocomplete="username">
+      <label>Password</label>
+      <input type="password" id="password" required autocomplete="current-password">
+      <button type="submit" style="width:100%">Access System</button>
+    </form>
+    <p id="login-error" class="hidden" style="color:var(--red); font-size:0.8rem; margin-top:12px;"></p>
+  </div>
+  <script src="config.js"></script>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errEl = document.getElementById('login-error');
+      errEl.classList.add('hidden');
+      try {
+        const res = await fetch(`${API}/admin/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+        localStorage.setItem('lp_token', data.token);
+        localStorage.setItem('lp_role', data.role);
+        localStorage.setItem('lp_username', data.username);
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

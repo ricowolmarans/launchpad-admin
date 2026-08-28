@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orders — Launchpad Admin</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="shell.js"></script>
+<script>
+requireAuth();
+const content = mountShell('dashboard');
+
+content.innerHTML = `
+  <div class="topbar">
+    <h1>Orders</h1>
+    <select id="status-filter" style="width:180px; margin:0;">
+      <option value="">All statuses</option>
+      <option value="new">New</option>
+      <option value="concept">Concept</option>
+      <option value="revision">Revision</option>
+      <option value="half_paid">Half Paid</option>
+      <option value="setup">Setup</option>
+      <option value="full_paid">Full Paid</option>
+      <option value="live">Live</option>
+      <option value="archived">Archived</option>
+    </select>
+  </div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Company</th><th>Tracking</th><th>Package</th><th>Status</th><th>Created</th></tr></thead>
+      <tbody id="orders-tbody"></tbody>
+    </table>
+  </div>
+  <div id="modal-root"></div>
+`;
+
+document.getElementById('status-filter').addEventListener('change', loadOrders);
+loadOrders();
+
+async function loadOrders() {
+  const status = document.getElementById('status-filter').value;
+  const orders = await api(`/orders${status ? `?status=${status}` : ''}`);
+  const tbody = document.getElementById('orders-tbody');
+  tbody.innerHTML = orders.map(o => `
+    <tr onclick="openOrder('${o.id}')">
+      <td>${o.company_name}</td>
+      <td>${o.tracking_username}</td>
+      <td>${o.package_tier}</td>
+      <td><span class="status-pill">${o.status.replace('_',' ')}</span></td>
+      <td>${new Date(o.created_at * 1000).toLocaleDateString()}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="color:var(--muted)">No orders yet.</td></tr>';
+}
+
+async function openOrder(id) {
+  const order = await api(`/orders/${id}`);
+  const comments = await api(`/orders/${id}/comments`);
+  const previews = await api(`/orders/${id}/previews`);
+  const pinStatus = await api(`/orders/${id}/pin`);
+
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-backdrop" onclick="if(event.target===this)this.remove()">
+      <div class="modal">
+        <h2>${order.company_name}</h2>
+        <p style="color:var(--muted); font-size:0.8rem; margin-bottom:16px;">${order.tracking_username} · ${order.contact_name} · ${order.email}</p>
+
+        <label>Status</label>
+        <select id="status-select">
+          ${['new','concept','revision','half_paid','setup','full_paid','live','archived'].map(s =>
+            `<option value="${s}" ${s===order.status?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
+        </select>
+        <button onclick="updateStatus('${id}')" class="secondary" style="margin-bottom:16px;">Update Status</button>
+
+        <label>Plain-English Summary</label>
+        <div id="ai-summary-box" style="font-size:0.85rem; border:1px solid var(--border); padding:10px; margin-bottom:8px; ${order.ai_summary ? '' : 'color:var(--muted)'}">
+          ${order.ai_summary ? escapeHtml(order.ai_summary) : 'No summary generated yet.'}
+        </div>
+        <button onclick="genSummary('${id}', false)" class="secondary" style="margin-right:6px; margin-bottom:16px;">${order.ai_summary ? 'Refresh (cached)' : 'Generate'} Summary</button>
+        ${order.ai_summary ? `<button onclick="genSummary('${id}', true)" class="secondary" style="margin-bottom:16px;">Force Regenerate</button>` : ''}
+
+        <label>Concept HTML Preview</label>
+        <textarea id="html-input" rows="4" placeholder="Paste concept HTML..."></textarea>
+        <button onclick="submitPreview('${id}')" class="secondary" style="margin-bottom:4px;">Add Preview Version</button>
+        <p style="color:var(--muted); font-size:0.75rem; margin-bottom:16px;">Current versions: ${previews.length}</p>
+
+        <label>Access PIN</label>
+        <p style="font-size:0.8rem; margin-bottom:8px;">
+          ${pinStatus.is_active ? `Active — ${pinStatus.attempts_remaining} attempt(s) left` : 'No active PIN'}
+        </p>
+        <button onclick="regenPin('${id}')" class="secondary" style="margin-bottom:16px;">Generate New PIN</button>
+
+        <label>Comments</label>
+        <div style="max-height:180px; overflow-y:auto; border:1px solid var(--border); padding:8px; margin-bottom:8px; font-size:0.85rem;">
+          ${comments.map(c => `<div style="margin-bottom:8px;"><strong style="color:${c.author_type==='admin'?'var(--red-dim)':'var(--text)'}">${c.author_type}:</strong> ${escapeHtml(c.message)}</div>`).join('') || '<span style="color:var(--muted)">No comments.</span>'}
+        </div>
+        <textarea id="comment-input" rows="2" placeholder="Reply to customer..."></textarea>
+        <button onclick="submitComment('${id}')" class="secondary" style="margin-bottom:16px;">Send Reply</button>
+
+        <button onclick="document.querySelector('.modal-backdrop').remove()" style="width:100%">Close</button>
+      </div>
+    </div>
+  `;
+}
+
+async function genSummary(id, force) {
+  const box = document.getElementById('ai-summary-box');
+  box.textContent = 'Generating...';
+  try {
+    const data = await api(`/orders/${id}/summary${force ? '?force=true' : ''}`, { method: 'POST', body: JSON.stringify({}) });
+    box.textContent = data.summary;
+    box.style.color = '';
+  } catch (err) {
+    box.textContent = `Failed: ${err.message}`;
+  }
+}
+
+async function updateStatus(id) {
+  const status = document.getElementById('status-select').value;
+  await api(`/orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  document.querySelector('.modal-backdrop').remove();
+  loadOrders();
+}
+
+async function submitPreview(id) {
+  const html = document.getElementById('html-input').value;
+  if (!html.trim()) return;
+  await api(`/orders/${id}/previews`, { method: 'POST', body: JSON.stringify({ html }) });
+  document.querySelector('.modal-backdrop').remove();
+  openOrder(id);
+}
+
+async function regenPin(id) {
+  const data = await api(`/orders/${id}/pin`, { method: 'POST', body: JSON.stringify({}) });
+  alert(`New PIN: ${data.pin}\\n\\nGive this to the customer now — it will not be shown again.`);
+  document.querySelector('.modal-backdrop').remove();
+  openOrder(id);
+}
+
+async function submitComment(id) {
+  const message = document.getElementById('comment-input').value;
+  if (!message.trim()) return;
+  await api(`/orders/${id}/comments`, { method: 'POST', body: JSON.stringify({ message }) });
+  document.querySelector('.modal-backdrop').remove();
+  openOrder(id);
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Setup — Launchpad Admin</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .box { width: 420px; padding: 32px; }
+  .box h1 { font-size: 1.1rem; margin-bottom: 4px; }
+  .box .sub { color: var(--muted); font-size: 0.75rem; margin-bottom: 20px; letter-spacing: 0.05em; }
+  .step { margin-bottom: 16px; }
+  .ok { color: #1a8a3a; font-size: 0.85rem; margin-top: 10px; }
+  .err { color: var(--red); font-size: 0.85rem; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div class="card box">
+    <h1>LAUNCHPAD<span style="color:var(--red)">.</span> SETUP</h1>
+    <p class="sub">RUN THIS ONCE — SETS UP DATABASE + ADMIN</p>
+
+    <div class="step">
+      <label>Worker API URL</label>
+      <input type="text" id="api-url" placeholder="https://launchpad-api.yourname.workers.dev">
+    </div>
+    <div class="step">
+      <label>Admin Username</label>
+      <input type="text" id="username" placeholder="rico">
+    </div>
+    <div class="step">
+      <label>Admin Password</label>
+      <input type="password" id="password" placeholder="choose a strong password">
+    </div>
+
+    <button onclick="runBootstrap()" style="width:100%">Create Admin Account</button>
+    <p id="result"></p>
+
+    <p style="color:var(--muted); font-size:0.7rem; margin-top:20px;">
+      This only works once. After it succeeds, this page becomes useless (the API refuses to run it again) — you can delete this file or just ignore it. Go to <code>index.html</code> to log in afterward.
+    </p>
+  </div>
+
+  <script>
+    async function runBootstrap() {
+      const apiUrl = document.getElementById('api-url').value.trim().replace(/\/$/, '');
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const resultEl = document.getElementById('result');
+      resultEl.textContent = '';
+      resultEl.className = '';
+
+      if (!apiUrl || !username || !password) {
+        resultEl.textContent = 'Fill in all three fields.';
+        resultEl.className = 'err';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${apiUrl}/admin/bootstrap`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Setup failed');
+
+        resultEl.textContent = 'Database schema created + admin account set up. Save your API URL — you\'ll need to put it into config.js and app.js before deploying properly. Go to index.html to log in.';
+        resultEl.className = 'ok';
+      } catch (err) {
+        resultEl.textContent = err.message;
+        resultEl.className = 'err';
+      }
+    }
+  </script>
+</body>
+</html>
