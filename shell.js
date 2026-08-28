@@ -4,7 +4,6 @@ function renderShell(activePage) {
     <aside class="sidebar">
       <div class="logo">
         <strong>LAUNCHPAD<span class="dot">.</span></strong>
-        <span>SAMARITAN CONSOLE</span>
       </div>
       <a href="dashboard.html" class="nav-item ${activePage==='dashboard'?'active':''}">Orders</a>
       <a href="invoices.html" class="nav-item ${activePage==='invoices'?'active':''}">Invoices &amp; Quotes</a>
