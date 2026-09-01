@@ -25,6 +25,7 @@ content.innerHTML = `
       <option value="setup">Setup</option>
       <option value="full_paid">Full Paid</option>
       <option value="live">Live</option>
+      <option value="done">Done</option>
       <option value="archived">Archived</option>
     </select>
   </div>
@@ -43,8 +44,9 @@ loadOrders();
 async function loadOrders() {
   const status = document.getElementById('status-filter').value;
   const orders = await api(`/orders${status ? `?status=${status}` : ''}`);
+  const visible = status ? orders : orders.filter(o => o.status !== 'done');
   const tbody = document.getElementById('orders-tbody');
-  tbody.innerHTML = orders.map(o => `
+  tbody.innerHTML = visible.map(o => `
     <tr onclick="openOrder('${o.id}')">
       <td>${o.company_name}</td>
       <td>${o.tracking_username}</td>
@@ -65,14 +67,25 @@ async function openOrder(id) {
     <div class="modal-backdrop" onclick="if(event.target===this)this.remove()">
       <div class="modal">
         <h2>${order.company_name}</h2>
-        <p style="color:var(--muted); font-size:0.8rem; margin-bottom:16px;">${order.tracking_username} · ${order.contact_name} · ${order.email}</p>
+        <p style="color:var(--muted); font-size:0.8rem; margin-bottom:8px;">${order.contact_name} · ${order.email}</p>
+
+        <label>Tracking Username</label>
+        <div style="display:flex; gap:6px; margin-bottom:4px;">
+          <input id="tracking-username-input" value="${order.tracking_username}" style="margin:0;">
+          <button onclick="updateTrackingUsername('${id}')" class="secondary" style="flex-shrink:0; padding:10px 14px;">Save</button>
+        </div>
+        <p id="tracking-username-status" style="font-size:0.75rem; margin-bottom:16px;"></p>
 
         <label>Status</label>
         <select id="status-select">
-          ${['new','concept','revision','half_paid','setup','full_paid','live','archived'].map(s =>
+          ${['new','concept','revision','half_paid','setup','full_paid','live','done','archived'].map(s =>
             `<option value="${s}" ${s===order.status?'selected':''}>${s.replace('_',' ')}</option>`).join('')}
         </select>
         <button onclick="updateStatus('${id}')" class="secondary" style="margin-bottom:16px;">Update Status</button>
+        <div style="display:flex; gap:8px; margin-bottom:16px;">
+          <button onclick="markDone('${id}')" style="flex:1;">Mark Done</button>
+          <button onclick="deleteOrderConfirm('${id}')" class="secondary" style="flex:1; border-color:var(--red); color:var(--red);">Delete Order</button>
+        </div>
 
         <label>Plain-English Summary</label>
         <div id="ai-summary-box" style="font-size:0.85rem; border:1px solid var(--border); padding:10px; margin-bottom:8px; ${order.ai_summary ? '' : 'color:var(--muted)'}">
@@ -115,6 +128,36 @@ async function genSummary(id, force) {
   } catch (err) {
     box.textContent = `Failed: ${err.message}`;
   }
+}
+
+async function updateTrackingUsername(id) {
+  const newUsername = document.getElementById('tracking-username-input').value.trim();
+  const statusEl = document.getElementById('tracking-username-status');
+  statusEl.textContent = '';
+  if (!newUsername) { statusEl.textContent = 'Cannot be empty.'; statusEl.style.color = 'var(--red)'; return; }
+
+  try {
+    await api(`/orders/${id}`, { method: 'PATCH', body: JSON.stringify({ tracking_username: newUsername }) });
+    statusEl.textContent = 'Saved. Customer must use the new link/username from now on.';
+    statusEl.style.color = '#1a8a3a';
+    loadOrders();
+  } catch (err) {
+    statusEl.textContent = err.message.includes('UNIQUE') ? 'That username is already taken by another order.' : `Failed: ${err.message}`;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+async function markDone(id) {
+  await api(`/orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'done' }) });
+  document.querySelector('.modal-backdrop').remove();
+  loadOrders();
+}
+
+async function deleteOrderConfirm(id) {
+  if (!confirm('Delete this order permanently? This also removes its comments, previews, PINs and invoices. This cannot be undone.')) return;
+  await api(`/orders/${id}`, { method: 'DELETE' });
+  document.querySelector('.modal-backdrop').remove();
+  loadOrders();
 }
 
 async function updateStatus(id) {

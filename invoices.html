@@ -44,6 +44,7 @@ async function loadInvoices() {
 }
 
 let lineItems = [{ desc: '', qty: 1, unit_price: 0 }];
+let lastPayToDetails = localStorage.getItem('lp_last_pay_to') || '';
 
 async function showNewForm() {
   const orders = await api('/orders');
@@ -51,13 +52,16 @@ async function showNewForm() {
   renderNewForm(orders);
 }
 
+let currentOrderIdForAi = null;
+
 function renderNewForm(orders) {
+  currentOrderIdForAi = orders[0]?.id || null;
   document.getElementById('modal-root').innerHTML = `
     <div class="modal-backdrop" onclick="if(event.target===this)this.remove()">
       <div class="modal">
         <h2>New Quote / Invoice</h2>
         <label>Order</label>
-        <select id="order-select">
+        <select id="order-select" onchange="currentOrderIdForAi=this.value">
           ${orders.map(o => `<option value="${o.id}">${o.company_name} (${o.tracking_username})</option>`).join('')}
         </select>
         <label>Type</label>
@@ -66,15 +70,38 @@ function renderNewForm(orders) {
           <option value="invoice">Invoice</option>
         </select>
         <label>Line Items (amounts in Rands)</label>
+        <button class="secondary" id="ai-gen-btn" onclick="generateLineItemsAi()" style="margin-bottom:12px; width:100%;">✨ Generate from Order Details</button>
         <div id="line-items"></div>
         <button class="secondary" onclick="addLineItem()" style="margin-bottom:16px;">+ Add Line</button>
         <label><input type="checkbox" id="vat-check" style="width:auto; display:inline-block; margin-right:6px;"> Apply 15% VAT</label>
+        <label>Pay To (bank details — shown on PDF)</label>
+        <textarea id="pay-to-input" rows="3" placeholder="Bank: FNB&#10;Account: 123456789&#10;Branch code: 250655">${lastPayToDetails}</textarea>
         <button onclick="submitInvoice()" style="width:100%; margin-top:12px;">Create</button>
         <button class="secondary" onclick="document.querySelector('.modal-backdrop').remove()" style="width:100%; margin-top:8px;">Cancel</button>
       </div>
     </div>
   `;
   renderLineItems();
+}
+
+async function generateLineItemsAi() {
+  if (!currentOrderIdForAi) { alert('Select an order first.'); return; }
+  const btn = document.getElementById('ai-gen-btn');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  try {
+    const data = await api(`/orders/${currentOrderIdForAi}/suggest-line-items`, { method: 'POST', body: JSON.stringify({}) });
+    if (data.line_items && data.line_items.length) {
+      lineItems = data.line_items;
+      renderLineItems();
+    }
+  } catch (err) {
+    alert(`Failed to generate: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 function renderLineItems() {
@@ -96,10 +123,12 @@ async function submitInvoice() {
   const orderId = document.getElementById('order-select').value;
   const type = document.getElementById('type-select').value;
   const apply_vat = document.getElementById('vat-check').checked;
+  const pay_to_details = document.getElementById('pay-to-input').value.trim();
+  localStorage.setItem('lp_last_pay_to', pay_to_details);
   // convert Rand inputs to cents
   const line_items = lineItems.map(li => ({ desc: li.desc, qty: li.qty, unit_price: Math.round(li.unit_price * 100) }));
 
-  await api(`/orders/${orderId}/invoices`, { method: 'POST', body: JSON.stringify({ type, line_items, apply_vat }) });
+  await api(`/orders/${orderId}/invoices`, { method: 'POST', body: JSON.stringify({ type, line_items, apply_vat, pay_to_details }) });
   document.querySelector('.modal-backdrop').remove();
   loadInvoices();
 }
@@ -153,6 +182,12 @@ async function downloadInvoicePdf(id) {
         ${inv.vat ? `<div><span>VAT (15%)</span><span>R ${(inv.vat/100).toFixed(2)}</span></div>` : ''}
         <div class="grand"><span>Total</span><span>R ${(inv.total/100).toFixed(2)}</span></div>
       </div>
+      ${inv.pay_to_details ? `
+        <div style="margin-top:32px; padding-top:16px; border-top:1px solid #ddd;">
+          <div style="font-size:0.7rem; text-transform:uppercase; color:#666; margin-bottom:6px; letter-spacing:0.05em;">Pay To</div>
+          <div style="font-size:0.9rem; white-space:pre-wrap;">${escapeHtmlPdf(inv.pay_to_details)}</div>
+        </div>
+      ` : ''}
       <scr` + `ipt>window.onload = () => window.print();</scr` + `ipt>
     </body>
     </html>

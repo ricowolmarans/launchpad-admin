@@ -6,6 +6,9 @@ function renderShell(activePage) {
         <strong>LAUNCHPAD<span class="dot">.</span></strong>
       </div>
       <a href="dashboard.html" class="nav-item ${activePage==='dashboard'?'active':''}">Orders</a>
+      <a href="orders-done.html" class="nav-item ${activePage==='orders-done'?'active':''}">Orders: Done</a>
+      <a href="enquiries.html" class="nav-item ${activePage==='enquiries'?'active':''}">Enquiries</a>
+      <a href="emails.html" class="nav-item ${activePage==='emails'?'active':''}">Emails</a>
       <a href="invoices.html" class="nav-item ${activePage==='invoices'?'active':''}">Invoices &amp; Quotes</a>
       <a href="activity.html" class="nav-item ${activePage==='activity'?'active':''}">Activity Feed</a>
       <a href="#" id="logout-link" class="nav-item">Logout</a>
