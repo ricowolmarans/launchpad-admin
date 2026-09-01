@@ -1,4 +1,4 @@
-const API = 'ingest.launchpad-studio.co.za'; // point at your deployed Worker
+const API = 'https://ingest.launchpad-studio.co.za'; // point at your deployed Worker
 
 function authHeaders() {
   const token = localStorage.getItem('lp_token');
