@@ -110,8 +110,15 @@ function renderLineItems() {
       <input placeholder="Description" value="${li.desc}" oninput="lineItems[${i}].desc=this.value" style="margin:0; flex:2;">
       <input type="number" placeholder="Qty" value="${li.qty}" oninput="lineItems[${i}].qty=Number(this.value)" style="margin:0; flex:1;">
       <input type="number" placeholder="Unit R" value="${li.unit_price}" oninput="lineItems[${i}].unit_price=Number(this.value)" style="margin:0; flex:1;">
+      <button type="button" class="secondary" onclick="removeLineItem(${i})" style="margin:0; flex-shrink:0; padding:0 12px; color:var(--red); border-color:var(--red);" ${lineItems.length <= 1 ? 'disabled' : ''}>✕</button>
     </div>
   `).join('');
+}
+
+function removeLineItem(i) {
+  if (lineItems.length <= 1) return; // always keep at least one row
+  lineItems.splice(i, 1);
+  renderLineItems();
 }
 
 function addLineItem() {
