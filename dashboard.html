@@ -94,10 +94,11 @@ async function openOrder(id) {
         <button onclick="genSummary('${id}', false)" class="secondary" style="margin-right:6px; margin-bottom:16px;">${order.ai_summary ? 'Refresh (cached)' : 'Generate'} Summary</button>
         ${order.ai_summary ? `<button onclick="genSummary('${id}', true)" class="secondary" style="margin-bottom:16px;">Force Regenerate</button>` : ''}
 
-        <label>Concept HTML Preview</label>
-        <textarea id="html-input" rows="4" placeholder="Paste concept HTML..."></textarea>
-        <button onclick="submitPreview('${id}')" class="secondary" style="margin-bottom:4px;">Add Preview Version</button>
-        <p style="color:var(--muted); font-size:0.75rem; margin-bottom:16px;">Current versions: ${previews.length}</p>
+        <label>Website Preview</label>
+        <input id="site-files-input" type="file" multiple webkitdirectory directory accept=".html,.htm,.css,.js,.mjs,.json,.svg,.png,.jpg,.jpeg,.gif,.webp,.ico,.woff,.woff2,.ttf,.otf,.mp4,.webm" style="margin-bottom:8px;">
+        <p style="color:var(--muted); font-size:0.75rem; margin-bottom:8px;">Choose the complete website folder. It must include <code>index.html</code>; its CSS, scripts, images and fonts are kept together for a private preview. No public site URL is created.</p>
+        <button onclick="submitPreview('${id}')" class="secondary" style="margin-bottom:4px;">Upload Preview Version</button>
+        <p id="preview-upload-status" style="color:var(--muted); font-size:0.75rem; margin-bottom:16px;">Current versions: ${previews.length} · 250 files / 8 MB max</p>
 
         <label>Access PIN</label>
         <p style="font-size:0.8rem; margin-bottom:8px;">
@@ -168,11 +169,56 @@ async function updateStatus(id) {
 }
 
 async function submitPreview(id) {
-  const html = document.getElementById('html-input').value;
-  if (!html.trim()) return;
-  await api(`/orders/${id}/previews`, { method: 'POST', body: JSON.stringify({ html }) });
-  document.querySelector('.modal-backdrop').remove();
-  openOrder(id);
+  const input = document.getElementById('site-files-input');
+  const status = document.getElementById('preview-upload-status');
+  const selected = Array.from(input.files || []);
+  if (!selected.length) { status.textContent = 'Choose your website folder first.'; status.style.color = 'var(--red)'; return; }
+  if (selected.length > 250) { status.textContent = 'That folder has more than 250 files.'; status.style.color = 'var(--red)'; return; }
+
+  const paths = selected.map(file => file.webkitRelativePath || file.name);
+  const files = selected.map((file, index) => ({ file, path: paths[index] }));
+  // Folder picker paths include the selected root folder. Strip that one segment so
+  // index.html and assets resolve as they would when deployed at a site root.
+  const firstSegments = files.map(item => item.path.split('/')[0]);
+  if (firstSegments.length && firstSegments.every(segment => segment === firstSegments[0])) {
+    files.forEach(item => { item.path = item.path.split('/').slice(1).join('/'); });
+  }
+  if (!files.some(item => item.path.toLowerCase() === 'index.html')) {
+    status.textContent = 'The selected folder needs index.html at its top level.';
+    status.style.color = 'var(--red)';
+    return;
+  }
+
+  status.textContent = `Reading ${files.length} file${files.length === 1 ? '' : 's'}...`;
+  status.style.color = 'var(--muted)';
+  try {
+    const payload = await Promise.all(files.map(async ({ file, path }) => ({
+      path,
+      content: (await readFileAsDataUrl(file)).split(',', 2)[1],
+      content_type: file.type || mimeFromPath(path),
+    })));
+    status.textContent = 'Uploading preview...';
+    const result = await api(`/orders/${id}/previews`, { method: 'POST', body: JSON.stringify({ files: payload }) });
+    document.querySelector('.modal-backdrop').remove();
+    openOrder(id);
+  } catch (err) {
+    status.textContent = `Upload failed: ${err.message}`;
+    status.style.color = 'var(--red)';
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function mimeFromPath(path) {
+  const ext = path.split('.').pop().toLowerCase();
+  return ({ html:'text/html; charset=utf-8', htm:'text/html; charset=utf-8', css:'text/css; charset=utf-8', js:'text/javascript; charset=utf-8', mjs:'text/javascript; charset=utf-8', json:'application/json', svg:'image/svg+xml', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', ico:'image/x-icon', woff:'font/woff', woff2:'font/woff2', ttf:'font/ttf', otf:'font/otf', mp4:'video/mp4', webm:'video/webm' })[ext] || 'application/octet-stream';
 }
 
 async function regenPin(id) {
