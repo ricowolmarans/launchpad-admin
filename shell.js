@@ -10,6 +10,7 @@ function renderShell(activePage) {
       <a href="enquiries.html" class="nav-item ${activePage==='enquiries'?'active':''}">Enquiries</a>
       <a href="emails.html" class="nav-item ${activePage==='emails'?'active':''}">Emails</a>
       <a href="invoices.html" class="nav-item ${activePage==='invoices'?'active':''}">Invoices &amp; Quotes</a>
+      <a href="plans.html" class="nav-item ${activePage==='plans'?'active':''}">Plans</a>
       <a href="activity.html" class="nav-item ${activePage==='activity'?'active':''}">Activity Feed</a>
       <a href="#" id="logout-link" class="nav-item">Logout</a>
     </aside>
